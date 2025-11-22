@@ -163,75 +163,266 @@ The theory evolved through multiple iterations:
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR-USERNAME/12d-cst-ai-model.git
-cd 12d-cst-ai-model
+git clone https://github.com/NavisWORLD/The-Cosmic-Davis-12D-Hebbian-Transformer-ver.4.20.git
+cd The-Cosmic-Davis-12D-Hebbian-Transformer-ver.4.20
 
-# Install dependencies (one command)
+# Navigate to the main transformer package
+cd packages/cosmic-synapse-transformer
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Install the package in development mode
 pip install -e .
+```
+
+**Alternative (minimal installation):**
+```bash
+# Install only core dependencies
+pip install torch numpy transformers scipy matplotlib pyyaml tqdm
 ```
 
 **Zero-cost deployment**: The system includes synthetic data generation and trains on CPU in under 10 minutes for testing.
 
+### Quick Test (5 Minutes)
+
+```bash
+# Navigate to package directory
+cd packages/cosmic-synapse-transformer
+
+# Generate synthetic training data (10K tokens)
+python cosmic_synapse/data/generate_synthetic_data.py \
+    --num-tokens 10000 \
+    --output-dir data \
+    --train-split 0.9
+
+# Quick training test on CPU
+python cosmic_synapse/training/train_cosmic_transformer.py \
+    --data-dir data \
+    --max-iters 100 \
+    --device cpu \
+    --batch-size 8
+```
+
 ### Basic Usage
 
 ```python
-from cst_12d import CosmicSynapseModel, CosmicTrainer
+from cosmic_synapse.models.cosmic_synapse_transformer import (
+    CosmicSynapseTransformer,
+    CosmicConfig
+)
+from cosmic_synapse.inference.inference_cosmic_transformer import CosmicInferenceEngine
 
 # Initialize model with 12D CST architecture
-model = CosmicSynapseModel(
-    vocab_size=50000,
-    d_model=768,
-    n_heads=12,
-    n_layers=12,
-    phi_scale=True,      # Enable φ-harmonic scaling
-    chaos_enabled=True,  # Enable Lorenz chaos injection
-    hebbian_rate=0.01    # Hebbian learning rate
+config = CosmicConfig(
+    vocab_size=50257,      # GPT-2 vocab size
+    max_seq_len=1024,      # Context window
+    d_model=768,           # Embedding dimension (φ-optimized)
+    n_layers=12,           # Number of transformer layers
+    n_heads=12,            # Attention heads
+
+    # 12D CST Parameters
+    k=0.1,                 # Internal state coupling
+    gamma=0.05,            # Decay constant
+    sigma=0.5,             # Hebbian spread
+    beta=0.2,              # Hebbian attention weight
 )
 
-# Train with synthetic data (cost-free)
-trainer = CosmicTrainer(model, config="config/train_config.yaml")
-trainer.train(
-    use_synthetic=True,
-    num_epochs=10,
-    distributed=False  # Set True for multi-GPU
+# Create model
+model = CosmicSynapseTransformer(config)
+print(f"Model parameters: {model.get_num_params()/1e6:.1f}M")
+
+# For inference from a trained checkpoint
+engine = CosmicInferenceEngine(
+    checkpoint_path="checkpoints/cosmic_model.pt",
+    device="cuda"  # or "cpu"
 )
 
 # Generate text
-output = model.generate(
+result = engine.generate(
     prompt="The nature of consciousness is",
-    max_length=100,
-    temperature=0.7,
-    use_chaos=True  # Enable chaos-enhanced sampling
+    max_new_tokens=100,
+    temperature=0.8,
+    top_k=50,
+    top_p=0.95
 )
-print(output)
+print(result['text'])
 ```
 
 ### Training from Scratch
 
+#### Step 1: Generate Synthetic Data
 ```bash
-# Generate synthetic training data
-python scripts/generate_synthetic_data.py --num_samples 100000
+# Generate 1M tokens of synthetic data
+python cosmic_synapse/data/generate_synthetic_data.py \
+    --num-tokens 1000000 \
+    --output-dir data \
+    --train-split 0.9 \
+    --val-split 0.1
+```
 
-# Train on CPU (quick test)
-python train.py --config config/train_config.yaml --device cpu
+This creates `data/train.bin` and `data/val.bin` with tokenized data.
 
-# Train on GPU (production)
-python train.py --config config/train_config.yaml --device cuda --distributed
+#### Step 2: Train the Model
 
-# Train on multiple GPUs
-torchrun --nproc_per_node=4 train.py --config config/train_config.yaml
+**Single GPU:**
+```bash
+# Train on GPU
+python cosmic_synapse/training/train_cosmic_transformer.py \
+    --data-dir data \
+    --out-dir checkpoints/12d_cst \
+    --device cuda \
+    --batch-size 16 \
+    --gradient-accumulation-steps 4 \
+    --max-iters 10000 \
+    --learning-rate 3e-4 \
+    --eval-interval 500 \
+    --save-interval 1000
+```
+
+**Multi-GPU (Distributed Data Parallel):**
+```bash
+# Automatic multi-GPU (uses all available GPUs)
+torchrun --nproc_per_node=4 cosmic_synapse/training/train_cosmic_transformer.py \
+    --data-dir data \
+    --out-dir checkpoints/12d_cst \
+    --batch-size 16 \
+    --gradient-accumulation-steps 4 \
+    --max-iters 10000
+```
+
+**CPU (for testing):**
+```bash
+# Train on CPU (slower, for testing only)
+python cosmic_synapse/training/train_cosmic_transformer.py \
+    --data-dir data \
+    --out-dir checkpoints/12d_cst \
+    --device cpu \
+    --batch-size 4 \
+    --max-iters 500
+```
+
+#### Step 3: Monitor Training
+
+If you have wandb installed:
+```bash
+# Training logs will appear in your wandb dashboard
+# Initialize wandb first: wandb login
+```
+
+### Text Generation
+
+#### Command Line
+```bash
+# Generate text from a trained model
+python cosmic_synapse/inference/inference_cosmic_transformer.py generate \
+    checkpoints/12d_cst/best_model.pt \
+    --prompt "The universe is" \
+    --max-tokens 200 \
+    --temperature 0.8 \
+    --top-k 50 \
+    --device cuda
+```
+
+#### Python Script
+```python
+from cosmic_synapse.inference.inference_cosmic_transformer import CosmicInferenceEngine
+
+# Load model
+engine = CosmicInferenceEngine(
+    checkpoint_path="checkpoints/12d_cst/best_model.pt",
+    device="cuda"
+)
+
+# Generate
+result = engine.generate(
+    prompt="The nature of consciousness is",
+    max_new_tokens=200,
+    temperature=0.8,
+    top_k=50,
+    top_p=0.95
+)
+
+print(result['text'])
+print(f"Generated {result['tokens_generated']} tokens in {result['generation_time']:.2f}s")
+print(f"Speed: {result['tokens_per_second']:.1f} tokens/sec")
 ```
 
 ### REST API Deployment
 
+#### Start the Server
 ```bash
-# Start inference server
-python serve.py --model_path checkpoints/model_best.pt --port 8000
+# Start Flask API server
+python cosmic_synapse/inference/inference_cosmic_transformer.py serve \
+    checkpoints/12d_cst/best_model.pt \
+    --host 0.0.0.0 \
+    --port 5000 \
+    --device cuda
+```
 
-# Make requests
-curl -X POST http://localhost:8000/generate \
+#### Make Requests
+```bash
+# Generate text via API
+curl -X POST http://localhost:5000/generate \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "Explain quantum entanglement", "max_length": 200}'
+  -d '{
+    "prompt": "The universe is",
+    "max_new_tokens": 100,
+    "temperature": 0.8,
+    "top_k": 50
+  }'
+
+# Health check
+curl http://localhost:5000/health
+
+# Model info
+curl http://localhost:5000/info
+```
+
+### Using Pre-installed Console Commands
+
+After installing the package with `pip install -e .`, you can use:
+
+```bash
+# Training
+cosmic-train --data-dir data --out-dir checkpoints
+
+# Inference
+cosmic-infer generate checkpoints/model.pt --prompt "Hello world"
+
+# Demo
+cosmic-demo
+```
+
+### Configuration Options
+
+Edit the training script or use command-line arguments:
+
+```python
+# Model configuration
+config = CosmicConfig(
+    vocab_size=50257,      # GPT-2 tokenizer vocab size
+    max_seq_len=1024,      # Maximum sequence length
+    d_model=768,           # Model dimension (will be φ-scaled)
+    n_layers=12,           # Number of transformer layers
+    n_heads=12,            # Number of attention heads
+
+    # 12D CST specific parameters
+    k=0.1,                 # Internal dimension coupling strength
+    gamma=0.05,            # Internal dimension decay rate
+    sigma=0.5,             # Hebbian learning spread
+    beta=0.2,              # Hebbian modulation strength
+    chaos_scale=0.01,      # Lorenz chaos injection scale
+)
+
+# Training configuration (via command line args)
+--batch-size 16              # Batch size per GPU
+--gradient-accumulation-steps 4  # Effective batch = batch_size * grad_accum
+--learning-rate 3e-4         # Learning rate (φ-scaled internally)
+--max-iters 10000            # Total training iterations
+--warmup-iters 1000          # Learning rate warmup iterations
+--eval-interval 500          # Evaluate every N iterations
+--save-interval 1000         # Save checkpoint every N iterations
 ```
 
 ---
